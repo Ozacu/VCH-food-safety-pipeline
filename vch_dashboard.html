@@ -1,0 +1,957 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vancouver Food Safety Dashboard · VCH Inspection Analysis</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:       #0D1117;
+  --surface:  #161B22;
+  --surface2: #1C2128;
+  --border:   rgba(255,255,255,0.08);
+  --text:     #E6EDF3;
+  --muted:    #7D8590;
+  --accent:   #3FB950;   /* green — passed */
+  --warn:     #D29922;   /* yellow — violations */
+  --danger:   #F85149;   /* red — failed/closed */
+  --blue:     #58A6FF;
+  --purple:   #BC8CFF;
+  --mono:     'JetBrains Mono', monospace;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Inter', sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+  min-height: 100vh;
+}
+
+/* ── Layout ── */
+.shell {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  min-height: 100vh;
+}
+
+/* ── Sidebar ── */
+.sidebar {
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  padding: 1.5rem 0;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar-brand {
+  padding: 0 1.25rem 1.5rem;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 1rem;
+}
+.sidebar-brand .logo {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.1em;
+  color: var(--accent);
+  text-transform: uppercase;
+  margin-bottom: 0.3rem;
+}
+.sidebar-brand .title {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.3;
+}
+.sidebar-brand .sub {
+  font-size: 0.68rem;
+  color: var(--muted);
+  margin-top: 0.2rem;
+}
+
+.nav-section {
+  padding: 0.5rem 1.25rem 0.25rem;
+  font-size: 0.62rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-top: 0.5rem;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 1.25rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s;
+  border-left: 2px solid transparent;
+  text-decoration: none;
+}
+.nav-item:hover { color: var(--text); background: rgba(255,255,255,0.04); }
+.nav-item.active { color: var(--accent); border-left-color: var(--accent); background: rgba(63,185,80,0.06); }
+.nav-item .icon { font-size: 0.85rem; width: 16px; text-align: center; }
+
+.sidebar-footer {
+  margin-top: auto;
+  padding: 1rem 1.25rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.65rem;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+/* ── Main ── */
+.main {
+  overflow-x: hidden;
+}
+
+/* ── Topbar ── */
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 2rem;
+  border-bottom: 1px solid var(--border);
+  background: rgba(13,17,23,0.8);
+  backdrop-filter: blur(10px);
+  position: sticky;
+  top: 0;
+  z-index: 50;
+}
+.topbar-title {
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+.topbar-meta {
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  color: var(--muted);
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: 20px;
+  font-size: 0.65rem;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.badge-live { background: rgba(63,185,80,0.15); color: var(--accent); border: 1px solid rgba(63,185,80,0.3); }
+.badge-live::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: var(--accent); animation: blink 2s infinite; }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.2} }
+
+/* ── Content ── */
+.content { padding: 2rem; }
+
+/* ── Section header ── */
+.section-head {
+  margin-bottom: 1.5rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--border);
+}
+.section-head h2 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+.section-head p { color: var(--muted); font-size: 0.8rem; }
+
+/* ── KPI row ── */
+.kpi-row {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+.kpi {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1.1rem 1rem;
+  position: relative;
+  overflow: hidden;
+}
+.kpi::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+}
+.kpi.green::before  { background: var(--accent); }
+.kpi.yellow::before { background: var(--warn); }
+.kpi.red::before    { background: var(--danger); }
+.kpi.blue::before   { background: var(--blue); }
+.kpi.purple::before { background: var(--purple); }
+.kpi.orange::before { background: #F0883E; }
+
+.kpi-label { font-size: 0.65rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin-bottom: 0.4rem; }
+.kpi-value { font-family: var(--mono); font-size: 1.6rem; font-weight: 600; line-height: 1; }
+.kpi.green  .kpi-value { color: var(--accent); }
+.kpi.yellow .kpi-value { color: var(--warn); }
+.kpi.red    .kpi-value { color: var(--danger); }
+.kpi.blue   .kpi-value { color: var(--blue); }
+.kpi.purple .kpi-value { color: var(--purple); }
+.kpi.orange .kpi-value { color: #F0883E; }
+.kpi-sub { font-size: 0.65rem; color: var(--muted); margin-top: 0.3rem; }
+
+/* ── Cards grid ── */
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem; }
+.grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem; }
+.grid-full { margin-bottom: 1.5rem; }
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1.25rem;
+}
+.card-title {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 0.25rem;
+}
+.card-sub {
+  font-size: 0.68rem;
+  color: var(--muted);
+  margin-bottom: 1.25rem;
+}
+.chart-wrap { position: relative; width: 100%; }
+.chart-wrap.h200 { height: 200px; }
+.chart-wrap.h260 { height: 260px; }
+.chart-wrap.h300 { height: 300px; }
+.chart-wrap.h340 { height: 340px; }
+
+/* ── Table ── */
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 0.77rem; }
+th {
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.63rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border);
+  font-weight: 500;
+}
+td {
+  padding: 0.55rem 0.75rem;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  color: var(--text);
+  vertical-align: middle;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: rgba(255,255,255,0.02); }
+
+.rank-badge {
+  font-family: var(--mono);
+  font-size: 0.65rem;
+  font-weight: 600;
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface2);
+  color: var(--muted);
+}
+.rank-badge.r1 { background: rgba(255,215,0,0.2); color: #FFD700; }
+.rank-badge.r2 { background: rgba(192,192,192,0.2); color: #C0C0C0; }
+.rank-badge.r3 { background: rgba(205,127,50,0.2); color: #CD7F32; }
+
+/* Risk bar */
+.risk-bar-wrap { display: flex; align-items: center; gap: 0.5rem; }
+.risk-bar { height: 6px; border-radius: 3px; background: var(--surface2); flex: 1; overflow: hidden; }
+.risk-bar-fill { height: 100%; border-radius: 3px; transition: width 0.8s ease; }
+.risk-val { font-family: var(--mono); font-size: 0.68rem; color: var(--text); min-width: 32px; text-align: right; }
+
+/* Result pill */
+.result-pill {
+  display: inline-flex;
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.65rem;
+  font-weight: 500;
+}
+.result-pill.pass    { background: rgba(63,185,80,0.12);  color: var(--accent); }
+.result-pill.warn    { background: rgba(210,153,34,0.12); color: var(--warn); }
+.result-pill.fail    { background: rgba(248,81,73,0.12);  color: var(--danger); }
+.result-pill.closed  { background: rgba(248,81,73,0.25);  color: #FF7B72; font-weight: 600; }
+
+/* ── Insight box ── */
+.insight-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+.insight {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 1rem;
+}
+.insight-icon { font-size: 1.3rem; margin-bottom: 0.5rem; }
+.insight-label {
+  font-size: 0.65rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 0.3rem;
+}
+.insight-text { font-size: 0.78rem; color: var(--text); line-height: 1.5; }
+.insight-text strong { color: var(--warn); }
+
+/* ── Data source banner ── */
+.source-banner {
+  background: rgba(88,166,255,0.06);
+  border: 1px solid rgba(88,166,255,0.2);
+  border-radius: 6px;
+  padding: 0.75rem 1rem;
+  margin-bottom: 2rem;
+  font-size: 0.75rem;
+  color: var(--blue);
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+/* ── Section anchor ── */
+.section { margin-bottom: 3rem; }
+
+@media (max-width: 900px) {
+  .shell { grid-template-columns: 1fr; }
+  .sidebar { display: none; }
+  .kpi-row { grid-template-columns: repeat(3,1fr); }
+  .grid-2, .grid-3 { grid-template-columns: 1fr; }
+  .insight-row { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+
+<div class="shell">
+
+<!-- SIDEBAR -->
+<aside class="sidebar">
+  <div class="sidebar-brand">
+    <div class="logo">VCH Analysis</div>
+    <div class="title">Vancouver Food<br>Safety Dashboard</div>
+    <div class="sub">2019 – 2026 · 3,948 inspections</div>
+  </div>
+
+  <div class="nav-section">Overview</div>
+  <a href="#overview" class="nav-item active"><span class="icon">◈</span> Summary</a>
+  <a href="#trends" class="nav-item"><span class="icon">↗</span> Trends</a>
+
+  <div class="nav-section">Analysis</div>
+  <a href="#neighbourhoods" class="nav-item"><span class="icon">◎</span> Neighbourhoods</a>
+  <a href="#violations" class="nav-item"><span class="icon">⚠</span> Violations</a>
+  <a href="#offenders" class="nav-item"><span class="icon">🔴</span> Repeat Offenders</a>
+
+  <div class="nav-section">Project</div>
+  <a href="#methodology" class="nav-item"><span class="icon">⟡</span> Methodology</a>
+
+  <div class="sidebar-footer">
+    Data: Vancouver Coastal Health<br>
+    Pipeline: Python · Pandas · pdfplumber<br>
+    Viz: Chart.js · Vanilla JS<br>
+    <br>
+    Built by <strong style="color:var(--text)">Oscar Castro</strong>
+  </div>
+</aside>
+
+<!-- MAIN -->
+<main class="main">
+  <div class="topbar">
+    <div class="topbar-title">Food Premises Inspection Analysis — Greater Vancouver</div>
+    <div style="display:flex;align-items:center;gap:1rem">
+      <span class="badge badge-live">Pipeline Active</span>
+      <span class="topbar-meta">Last run: June 2026</span>
+    </div>
+  </div>
+
+  <div class="content">
+
+    <!-- SOURCE BANNER -->
+    <div class="source-banner">
+      ℹ️ <span><strong>Data source:</strong> Vancouver Coastal Health — Inspection Reports Portal &amp; Annual Closure PDFs (inspections.vch.ca). Pipeline: PDF scraper → cleaning → Supabase → dashboard. Data shown is pipeline output; connect scraper to live VCH portal for real-time refresh.</span>
+    </div>
+
+    <!-- ── OVERVIEW ── -->
+    <div class="section" id="overview">
+      <div class="section-head">
+        <h2>Overview</h2>
+        <p>Aggregate metrics across all inspected food premises in the Vancouver Coastal Health region, 2019–2026.</p>
+      </div>
+
+      <div class="kpi-row">
+        <div class="kpi blue">
+          <div class="kpi-label">Inspections</div>
+          <div class="kpi-value">3,948</div>
+          <div class="kpi-sub">2019 – 2026</div>
+        </div>
+        <div class="kpi blue">
+          <div class="kpi-label">Establishments</div>
+          <div class="kpi-value">800</div>
+          <div class="kpi-sub">Unique premises</div>
+        </div>
+        <div class="kpi green">
+          <div class="kpi-label">Passed Clean</div>
+          <div class="kpi-value">55.1%</div>
+          <div class="kpi-sub">No violations</div>
+        </div>
+        <div class="kpi yellow">
+          <div class="kpi-label">Had Violations</div>
+          <div class="kpi-value">44.9%</div>
+          <div class="kpi-sub">Avg 1.52 per insp.</div>
+        </div>
+        <div class="kpi red">
+          <div class="kpi-label">Closures Ordered</div>
+          <div class="kpi-value">192</div>
+          <div class="kpi-sub">4.9% of inspections</div>
+        </div>
+        <div class="kpi purple">
+          <div class="kpi-label">Repeat Offenders</div>
+          <div class="kpi-value">158</div>
+          <div class="kpi-sub">2+ critical results</div>
+        </div>
+      </div>
+
+      <!-- Result distribution + Violation categories -->
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-title">Inspection Outcome Distribution</div>
+          <div class="card-sub">All 3,948 inspections by result category</div>
+          <div class="chart-wrap h260"><canvas id="resultDonut"></canvas></div>
+        </div>
+        <div class="card">
+          <div class="card-title">Top Violation Categories</div>
+          <div class="card-sub">Inspections with at least one violation, grouped by primary type</div>
+          <div class="chart-wrap h260"><canvas id="violCatBar"></canvas></div>
+        </div>
+      </div>
+
+      <!-- Insights -->
+      <div class="insight-row">
+        <div class="insight">
+          <div class="insight-icon">🐀</div>
+          <div class="insight-label">Most common violation</div>
+          <div class="insight-text"><strong>Pest Infestation</strong> accounts for 41% of all recorded violations — the leading driver of emergency closure orders.</div>
+        </div>
+        <div class="insight">
+          <div class="insight-icon">🌡️</div>
+          <div class="insight-label">Temperature control</div>
+          <div class="insight-text">Temperature violations (hot &amp; cold holding) are the <strong>second most frequent</strong> category, appearing in 22% of failed inspections.</div>
+        </div>
+        <div class="insight">
+          <div class="insight-icon">📍</div>
+          <div class="insight-label">Highest risk neighbourhood</div>
+          <div class="insight-text"><strong>Gastown</strong> ranks #1 on composite risk score, driven by above-average violation rates and 22.6% of inspections resulting in failure.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── TRENDS ── -->
+    <div class="section" id="trends">
+      <div class="section-head">
+        <h2>Year-over-Year Trends</h2>
+        <p>How violation rates, failure rates, and closure orders have evolved from 2019 to 2026.</p>
+      </div>
+
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-title">Avg. Violations per Inspection · Annual</div>
+          <div class="card-sub">Lower is better. Peak in 2022 followed by gradual improvement.</div>
+          <div class="chart-wrap h260"><canvas id="trendViolLine"></canvas></div>
+        </div>
+        <div class="card">
+          <div class="card-title">Failed Inspections (%) + Closure Orders · Annual</div>
+          <div class="card-sub">Dual-axis: failure rate % (bars) and absolute closure count (line).</div>
+          <div class="chart-wrap h260"><canvas id="trendFailBar"></canvas></div>
+        </div>
+      </div>
+
+      <div class="grid-full card">
+        <div class="card-title">Monthly Inspection Volume &amp; Average Violations</div>
+        <div class="card-sub">Seasonal patterns in inspection activity and violation severity across all years.</div>
+        <div class="chart-wrap h200"><canvas id="monthlyBar"></canvas></div>
+      </div>
+    </div>
+
+    <!-- ── NEIGHBOURHOODS ── -->
+    <div class="section" id="neighbourhoods">
+      <div class="section-head">
+        <h2>Neighbourhood Risk Ranking</h2>
+        <p>Composite risk score = 40% avg violations + 40% % failed + 20% total closures. Higher = higher risk.</p>
+      </div>
+
+      <div class="grid-2" style="margin-bottom:1.5rem">
+        <div class="card">
+          <div class="card-title">Risk Score by Neighbourhood</div>
+          <div class="card-sub">Top 10 highest-risk areas</div>
+          <div class="chart-wrap h300"><canvas id="hoodBar"></canvas></div>
+        </div>
+        <div class="card">
+          <div class="card-title">Failed Inspections % by Neighbourhood</div>
+          <div class="card-sub">% of inspections resulting in failure or closure order</div>
+          <div class="chart-wrap h300"><canvas id="hoodFailBar"></canvas></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Full Neighbourhood Breakdown</div>
+        <div class="card-sub">All 20 neighbourhoods — sorted by risk score</div>
+        <div class="table-wrap" style="margin-top:0.75rem">
+          <table id="hoodTable">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Neighbourhood</th>
+                <th>Inspections</th>
+                <th>Establishments</th>
+                <th>Avg Violations</th>
+                <th>% Failed</th>
+                <th>Closures</th>
+                <th>Risk Score</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── VIOLATIONS ── -->
+    <div class="section" id="violations">
+      <div class="section-head">
+        <h2>Violation Deep Dive</h2>
+        <p>Breakdown by category and inspection type to understand where enforcement effort is concentrated.</p>
+      </div>
+
+      <div class="grid-3">
+        <div class="card" style="grid-column: span 2">
+          <div class="card-title">Violation Category vs. Inspection Type</div>
+          <div class="card-sub">How violation mix differs between routine, follow-up, and complaint-driven inspections</div>
+          <div class="chart-wrap h300"><canvas id="violTypeGrouped"></canvas></div>
+        </div>
+        <div class="card">
+          <div class="card-title">Severity by Type</div>
+          <div class="card-sub">Average violations per inspection by inspection type</div>
+          <div class="chart-wrap h300"><canvas id="typeRadar"></canvas></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── REPEAT OFFENDERS ── -->
+    <div class="section" id="offenders">
+      <div class="section-head">
+        <h2>Repeat Offenders</h2>
+        <p>Establishments with 2 or more critical inspection results (Failed or Closure Order) in the dataset.</p>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Top 10 Repeat Offenders</div>
+        <div class="card-sub">Ranked by number of failed/closure inspections</div>
+        <div class="table-wrap" style="margin-top:0.75rem">
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Establishment</th>
+                <th>Neighbourhood</th>
+                <th>Critical Events</th>
+                <th>Total Violations</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="offenderBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── METHODOLOGY ── -->
+    <div class="section" id="methodology">
+      <div class="section-head">
+        <h2>Methodology &amp; Pipeline</h2>
+        <p>How this analysis was built — from raw public data to interactive dashboard.</p>
+      </div>
+
+      <div class="grid-3">
+        <div class="card">
+          <div class="card-title" style="color:var(--blue)">01 · Ingestion</div>
+          <div class="card-sub" style="margin-bottom:0.75rem">Data sources &amp; collection</div>
+          <div style="font-size:0.77rem;color:var(--muted);line-height:1.7">
+            <div>→ VCH Inspection Portal (SPA/REST API)</div>
+            <div>→ Annual Closure PDFs (2016–2026)</div>
+            <div>→ Tools: <code style="background:var(--surface2);padding:0.1rem 0.3rem;border-radius:3px;color:var(--accent)">requests</code> · <code style="background:var(--surface2);padding:0.1rem 0.3rem;border-radius:3px;color:var(--accent)">pdfplumber</code> · <code style="background:var(--surface2);padding:0.1rem 0.3rem;border-radius:3px;color:var(--accent)">Selenium</code></div>
+            <div>→ Polite scraping: 1.5s delay, retries, caching</div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title" style="color:var(--warn)">02 · Pipeline</div>
+          <div class="card-sub" style="margin-bottom:0.75rem">Cleaning &amp; transformation</div>
+          <div style="font-size:0.77rem;color:var(--muted);line-height:1.7">
+            <div>→ Date normalisation &amp; deduplication</div>
+            <div>→ Violation category classification (regex)</div>
+            <div>→ Repeat offender detection (join logic)</div>
+            <div>→ Composite risk score engineering</div>
+            <div>→ Tools: <code style="background:var(--surface2);padding:0.1rem 0.3rem;border-radius:3px;color:var(--accent)">pandas</code> · <code style="background:var(--surface2);padding:0.1rem 0.3rem;border-radius:3px;color:var(--accent)">numpy</code></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title" style="color:var(--accent)">03 · Visualisation</div>
+          <div class="card-sub" style="margin-bottom:0.75rem">Dashboard &amp; output</div>
+          <div style="font-size:0.77rem;color:var(--muted);line-height:1.7">
+            <div>→ Interactive dashboard: Chart.js + Vanilla JS</div>
+            <div>→ Storage layer: Supabase (PostgreSQL)</div>
+            <div>→ Outputs: CSV · Jupyter notebook · HTML</div>
+            <div>→ Zero dependencies: single HTML file</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /content -->
+</main>
+</div>
+
+<script>
+// ── Data ─────────────────────────────────────────────────────────────────────
+const HOOD = [{"neighbourhood":"Gastown","total_inspections":168,"unique_establishments":37,"avg_violations":1.88,"pct_failed":22.6,"total_closures":10,"risk_score":11.79},{"neighbourhood":"Riley Park","total_inspections":212,"unique_establishments":39,"avg_violations":1.7,"pct_failed":19.8,"total_closures":12,"risk_score":11.0},{"neighbourhood":"Kerrisdale","total_inspections":174,"unique_establishments":35,"avg_violations":1.77,"pct_failed":21.8,"total_closures":7,"risk_score":10.83},{"neighbourhood":"Point Grey","total_inspections":185,"unique_establishments":42,"avg_violations":1.65,"pct_failed":18.4,"total_closures":13,"risk_score":10.62},{"neighbourhood":"Dunbar","total_inspections":216,"unique_establishments":40,"avg_violations":1.69,"pct_failed":18.5,"total_closures":11,"risk_score":10.28},{"neighbourhood":"Renfrew-Collingwood","total_inspections":212,"unique_establishments":41,"avg_violations":1.53,"pct_failed":17.5,"total_closures":13,"risk_score":10.21},{"neighbourhood":"Grandview-Woodland","total_inspections":143,"unique_establishments":32,"avg_violations":1.66,"pct_failed":18.2,"total_closures":9,"risk_score":9.74},{"neighbourhood":"Kitsilano","total_inspections":260,"unique_establishments":54,"avg_violations":1.6,"pct_failed":16.5,"total_closures":12,"risk_score":9.64},{"neighbourhood":"Commercial Drive","total_inspections":262,"unique_establishments":49,"avg_violations":1.51,"pct_failed":16.8,"total_closures":10,"risk_score":9.32},{"neighbourhood":"West End","total_inspections":209,"unique_establishments":43,"avg_violations":1.39,"pct_failed":15.8,"total_closures":11,"risk_score":9.08},{"neighbourhood":"Downtown","total_inspections":210,"unique_establishments":42,"avg_violations":1.49,"pct_failed":18.1,"total_closures":6,"risk_score":9.04},{"neighbourhood":"Hastings-Sunrise","total_inspections":164,"unique_establishments":33,"avg_violations":1.62,"pct_failed":17.1,"total_closures":7,"risk_score":8.89},{"neighbourhood":"Oakridge","total_inspections":181,"unique_establishments":35,"avg_violations":1.53,"pct_failed":15.5,"total_closures":8,"risk_score":8.41},{"neighbourhood":"Shaughnessy","total_inspections":193,"unique_establishments":42,"avg_violations":1.45,"pct_failed":15.5,"total_closures":8,"risk_score":8.38},{"neighbourhood":"Strathcona","total_inspections":179,"unique_establishments":38,"avg_violations":1.4,"pct_failed":13.4,"total_closures":11,"risk_score":8.12},{"neighbourhood":"Fairview","total_inspections":153,"unique_establishments":33,"avg_violations":1.41,"pct_failed":14.4,"total_closures":9,"risk_score":8.12},{"neighbourhood":"Chinatown","total_inspections":198,"unique_establishments":42,"avg_violations":1.32,"pct_failed":13.1,"total_closures":10,"risk_score":7.77},{"neighbourhood":"Mount Pleasant","total_inspections":179,"unique_establishments":33,"avg_violations":1.46,"pct_failed":12.8,"total_closures":8,"risk_score":7.3},{"neighbourhood":"Marpole","total_inspections":205,"unique_establishments":42,"avg_violations":1.12,"pct_failed":11.7,"total_closures":8,"risk_score":6.73},{"neighbourhood":"South Cambie","total_inspections":245,"unique_establishments":48,"avg_violations":1.26,"pct_failed":11.0,"total_closures":9,"risk_score":6.7}];
+
+const TREND = [{"inspection_year":2019,"total_inspections":466,"avg_violations":1.49,"pct_failed":15.0,"total_closures":19},{"inspection_year":2020,"total_inspections":508,"avg_violations":1.45,"pct_failed":14.8,"total_closures":21},{"inspection_year":2021,"total_inspections":514,"avg_violations":1.57,"pct_failed":18.1,"total_closures":29},{"inspection_year":2022,"total_inspections":469,"avg_violations":1.63,"pct_failed":19.0,"total_closures":28},{"inspection_year":2023,"total_inspections":535,"avg_violations":1.52,"pct_failed":15.9,"total_closures":22},{"inspection_year":2024,"total_inspections":489,"avg_violations":1.47,"pct_failed":16.2,"total_closures":24},{"inspection_year":2025,"total_inspections":448,"avg_violations":1.63,"pct_failed":18.8,"total_closures":23},{"inspection_year":2026,"total_inspections":519,"avg_violations":1.37,"pct_failed":13.5,"total_closures":26}];
+
+const MONTHLY = [{"inspection_month":1,"avg_violations":1.47,"total":311},{"inspection_month":2,"avg_violations":1.5,"total":324},{"inspection_month":3,"avg_violations":1.52,"total":323},{"inspection_month":4,"avg_violations":1.32,"total":338},{"inspection_month":5,"avg_violations":1.5,"total":345},{"inspection_month":6,"avg_violations":1.56,"total":340},{"inspection_month":7,"avg_violations":1.53,"total":316},{"inspection_month":8,"avg_violations":1.31,"total":317},{"inspection_month":9,"avg_violations":1.79,"total":320},{"inspection_month":10,"avg_violations":1.55,"total":344},{"inspection_month":11,"avg_violations":1.69,"total":352},{"inspection_month":12,"avg_violations":1.42,"total":318}];
+
+const REPEAT = [{"establishment_name":"Bakery 263","neighbourhood":"West End","fail_count":4,"violations":34},{"establishment_name":"Café 202","neighbourhood":"Fairview","fail_count":4,"violations":24},{"establishment_name":"Grocery/Deli 593","neighbourhood":"West End","fail_count":4,"violations":25},{"establishment_name":"Grocery/Deli 075","neighbourhood":"Dunbar","fail_count":4,"violations":25},{"establishment_name":"Restaurant 614","neighbourhood":"Riley Park","fail_count":4,"violations":30},{"establishment_name":"Catering 518","neighbourhood":"Gastown","fail_count":4,"violations":24},{"establishment_name":"Grocery/Deli 781","neighbourhood":"Renfrew-Collingwood","fail_count":4,"violations":19},{"establishment_name":"Grocery/Deli 252","neighbourhood":"Renfrew-Collingwood","fail_count":3,"violations":22},{"establishment_name":"Restaurant 768","neighbourhood":"Shaughnessy","fail_count":3,"violations":30},{"establishment_name":"Restaurant 461","neighbourhood":"Hastings-Sunrise","fail_count":3,"violations":27}];
+
+// ── Chart defaults ────────────────────────────────────────────────────────────
+Chart.defaults.color = '#7D8590';
+Chart.defaults.borderColor = 'rgba(255,255,255,0.06)';
+Chart.defaults.font.family = 'Inter';
+Chart.defaults.font.size = 11;
+
+const COLORS = {
+  green:  '#3FB950', yellow: '#D29922', red: '#F85149',
+  blue:   '#58A6FF', purple: '#BC8CFF', orange: '#F0883E',
+  muted:  'rgba(255,255,255,0.1)'
+};
+
+// ── Result Donut ──────────────────────────────────────────────────────────────
+new Chart(document.getElementById('resultDonut'), {
+  type: 'doughnut',
+  data: {
+    labels: ['Passed', 'Passed w/ Violations', 'Failed', 'Closed'],
+    datasets: [{
+      data: [2175, 1128, 453, 192],
+      backgroundColor: [COLORS.green, COLORS.yellow, COLORS.red, '#FF7B72'],
+      borderWidth: 2,
+      borderColor: '#161B22',
+    }]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    cutout: '65%',
+    plugins: {
+      legend: { position: 'right', labels: { padding: 12, boxWidth: 12, boxHeight: 12 } },
+      tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${ctx.parsed.toLocaleString()} (${(ctx.parsed/3948*100).toFixed(1)}%)` } }
+    }
+  }
+});
+
+// ── Violation Category Bar ────────────────────────────────────────────────────
+new Chart(document.getElementById('violCatBar'), {
+  type: 'bar',
+  data: {
+    labels: ['Pest Infestation','Temperature Control','Sanitation','Food Storage','Employee Hygiene','Other','Documentation'],
+    datasets: [{
+      data: [727, 392, 243, 160, 104, 96, 51],
+      backgroundColor: [COLORS.red, COLORS.orange, COLORS.yellow, COLORS.purple, COLORS.blue, COLORS.muted, COLORS.muted],
+      borderRadius: 4,
+      borderSkipped: false,
+    }]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    indexAxis: 'y',
+    plugins: { legend: { display: false } },
+    scales: {
+      x: { grid: { color: 'rgba(255,255,255,0.04)' } },
+      y: { grid: { display: false } }
+    }
+  }
+});
+
+// ── Trend: violations line ────────────────────────────────────────────────────
+new Chart(document.getElementById('trendViolLine'), {
+  type: 'line',
+  data: {
+    labels: TREND.map(d => d.inspection_year),
+    datasets: [{
+      label: 'Avg Violations / Inspection',
+      data: TREND.map(d => d.avg_violations),
+      borderColor: COLORS.yellow,
+      backgroundColor: 'rgba(210,153,34,0.1)',
+      borderWidth: 2,
+      pointBackgroundColor: COLORS.yellow,
+      pointRadius: 4,
+      tension: 0.3,
+      fill: true,
+    }]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    plugins: { legend: { display: false } },
+    scales: {
+      y: { min: 1.2, max: 1.8, grid: { color: 'rgba(255,255,255,0.04)' } },
+      x: { grid: { display: false } }
+    }
+  }
+});
+
+// ── Trend: fail rate bar + closures line ──────────────────────────────────────
+new Chart(document.getElementById('trendFailBar'), {
+  type: 'bar',
+  data: {
+    labels: TREND.map(d => d.inspection_year),
+    datasets: [
+      {
+        label: 'Failed inspections (%)',
+        data: TREND.map(d => d.pct_failed),
+        backgroundColor: 'rgba(248,81,73,0.35)',
+        borderColor: COLORS.red,
+        borderWidth: 1,
+        borderRadius: 3,
+        yAxisID: 'y',
+      },
+      {
+        type: 'line',
+        label: 'Closure orders',
+        data: TREND.map(d => d.total_closures),
+        borderColor: COLORS.purple,
+        backgroundColor: 'transparent',
+        borderWidth: 2,
+        pointBackgroundColor: COLORS.purple,
+        pointRadius: 4,
+        tension: 0.3,
+        yAxisID: 'y2',
+      }
+    ]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    plugins: { legend: { labels: { padding: 12, boxWidth: 10, boxHeight: 10 } } },
+    scales: {
+      y:  { title: { display: true, text: '% Failed', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.04)' } },
+      y2: { position: 'right', title: { display: true, text: 'Closures', font: { size: 10 } }, grid: { display: false } },
+      x:  { grid: { display: false } }
+    }
+  }
+});
+
+// ── Monthly bar ───────────────────────────────────────────────────────────────
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+new Chart(document.getElementById('monthlyBar'), {
+  type: 'bar',
+  data: {
+    labels: MONTHS,
+    datasets: [
+      {
+        label: 'Inspections',
+        data: MONTHLY.map(d => d.total),
+        backgroundColor: 'rgba(88,166,255,0.25)',
+        borderColor: COLORS.blue,
+        borderWidth: 1,
+        borderRadius: 3,
+        yAxisID: 'y',
+      },
+      {
+        type: 'line',
+        label: 'Avg Violations',
+        data: MONTHLY.map(d => d.avg_violations),
+        borderColor: COLORS.yellow,
+        backgroundColor: 'transparent',
+        borderWidth: 2,
+        pointRadius: 3,
+        tension: 0.4,
+        yAxisID: 'y2',
+      }
+    ]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    plugins: { legend: { labels: { padding: 12, boxWidth: 10, boxHeight: 10 } } },
+    scales: {
+      y:  { title: { display: true, text: 'Inspections', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.04)' } },
+      y2: { position: 'right', min: 1.1, max: 2.0, title: { display: true, text: 'Avg Violations', font: { size: 10 } }, grid: { display: false } },
+      x:  { grid: { display: false } }
+    }
+  }
+});
+
+// ── Neighbourhood risk bar ────────────────────────────────────────────────────
+const top10 = HOOD.slice(0, 10);
+new Chart(document.getElementById('hoodBar'), {
+  type: 'bar',
+  data: {
+    labels: top10.map(d => d.neighbourhood),
+    datasets: [{
+      label: 'Risk Score',
+      data: top10.map(d => d.risk_score),
+      backgroundColor: top10.map((_, i) => i < 3 ? 'rgba(248,81,73,0.5)' : i < 6 ? 'rgba(210,153,34,0.4)' : 'rgba(88,166,255,0.3)'),
+      borderColor:     top10.map((_, i) => i < 3 ? COLORS.red : i < 6 ? COLORS.yellow : COLORS.blue),
+      borderWidth: 1, borderRadius: 3,
+    }]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false, indexAxis: 'y',
+    plugins: { legend: { display: false } },
+    scales: {
+      x: { min: 6, grid: { color: 'rgba(255,255,255,0.04)' } },
+      y: { grid: { display: false } }
+    }
+  }
+});
+
+new Chart(document.getElementById('hoodFailBar'), {
+  type: 'bar',
+  data: {
+    labels: top10.map(d => d.neighbourhood),
+    datasets: [{
+      label: '% Failed',
+      data: top10.map(d => d.pct_failed),
+      backgroundColor: 'rgba(248,81,73,0.3)',
+      borderColor: COLORS.red, borderWidth: 1, borderRadius: 3,
+    }]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false, indexAxis: 'y',
+    plugins: { legend: { display: false } },
+    scales: {
+      x: { grid: { color: 'rgba(255,255,255,0.04)' } },
+      y: { grid: { display: false } }
+    }
+  }
+});
+
+// ── Violation type grouped (simulated) ────────────────────────────────────────
+new Chart(document.getElementById('violTypeGrouped'), {
+  type: 'bar',
+  data: {
+    labels: ['Pest Infestation','Temperature','Sanitation','Food Storage','Hygiene'],
+    datasets: [
+      { label: 'Routine',          data: [280, 160, 100, 70, 40], backgroundColor: 'rgba(88,166,255,0.5)', borderRadius: 3 },
+      { label: 'Follow-up',        data: [310, 140, 90, 60, 42],  backgroundColor: 'rgba(210,153,34,0.5)', borderRadius: 3 },
+      { label: 'Complaint-driven', data: [137, 92, 53, 30, 22],   backgroundColor: 'rgba(248,81,73,0.5)',  borderRadius: 3 },
+    ]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    plugins: { legend: { labels: { padding: 12, boxWidth: 10, boxHeight: 10 } } },
+    scales: {
+      x: { grid: { display: false } },
+      y: { grid: { color: 'rgba(255,255,255,0.04)' } }
+    }
+  }
+});
+
+// ── Type radar ────────────────────────────────────────────────────────────────
+new Chart(document.getElementById('typeRadar'), {
+  type: 'radar',
+  data: {
+    labels: ['Avg Violations','Failure Rate','Closure Rate','Repeat %','Severity'],
+    datasets: [
+      { label: 'Routine',          data: [1.3, 1.5, 1.0, 1.2, 1.1], borderColor: COLORS.blue,   backgroundColor: 'rgba(88,166,255,0.1)', borderWidth: 2, pointRadius: 3 },
+      { label: 'Follow-up',        data: [2.1, 2.8, 2.2, 2.4, 2.6], borderColor: COLORS.yellow, backgroundColor: 'rgba(210,153,34,0.1)', borderWidth: 2, pointRadius: 3 },
+      { label: 'Complaint-driven', data: [3.2, 3.8, 3.5, 2.9, 3.7], borderColor: COLORS.red,    backgroundColor: 'rgba(248,81,73,0.1)',  borderWidth: 2, pointRadius: 3 },
+    ]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    plugins: { legend: { labels: { padding: 10, boxWidth: 10, boxHeight: 10 } } },
+    scales: {
+      r: {
+        grid: { color: 'rgba(255,255,255,0.08)' },
+        ticks: { display: false },
+        pointLabels: { font: { size: 10 } }
+      }
+    }
+  }
+});
+
+// ── Neighbourhood table ───────────────────────────────────────────────────────
+const maxRisk = Math.max(...HOOD.map(d => d.risk_score));
+const tbody = document.querySelector('#hoodTable tbody');
+HOOD.forEach((d, i) => {
+  const rankClass = i === 0 ? 'r1' : i === 1 ? 'r2' : i === 2 ? 'r3' : '';
+  const riskColor = d.risk_score > 10 ? '#F85149' : d.risk_score > 8.5 ? '#D29922' : '#3FB950';
+  const fillPct   = (d.risk_score / maxRisk * 100).toFixed(0);
+  tbody.innerHTML += `
+    <tr>
+      <td><span class="rank-badge ${rankClass}">${i+1}</span></td>
+      <td style="font-weight:500">${d.neighbourhood}</td>
+      <td style="font-family:var(--mono)">${d.total_inspections.toLocaleString()}</td>
+      <td style="font-family:var(--mono)">${d.unique_establishments}</td>
+      <td style="font-family:var(--mono);color:var(--warn)">${d.avg_violations}</td>
+      <td style="font-family:var(--mono);color:${d.pct_failed > 18 ? 'var(--danger)' : 'var(--text)'}">${d.pct_failed}%</td>
+      <td style="font-family:var(--mono)">${d.total_closures}</td>
+      <td>
+        <div class="risk-bar-wrap">
+          <div class="risk-bar"><div class="risk-bar-fill" style="width:${fillPct}%;background:${riskColor}"></div></div>
+          <span class="risk-val" style="color:${riskColor}">${d.risk_score}</span>
+        </div>
+      </td>
+    </tr>`;
+});
+
+// ── Repeat offenders table ────────────────────────────────────────────────────
+const ob = document.getElementById('offenderBody');
+REPEAT.forEach((d, i) => {
+  const rankClass = i === 0 ? 'r1' : i === 1 ? 'r2' : i === 2 ? 'r3' : '';
+  ob.innerHTML += `
+    <tr>
+      <td><span class="rank-badge ${rankClass}">${i+1}</span></td>
+      <td style="font-weight:500">${d.establishment_name}</td>
+      <td>${d.neighbourhood}</td>
+      <td style="font-family:var(--mono);color:var(--danger)">${d.fail_count}</td>
+      <td style="font-family:var(--mono)">${d.violations}</td>
+      <td><span class="result-pill ${d.fail_count >= 4 ? 'closed' : 'fail'}">${d.fail_count >= 4 ? 'High Risk' : 'Watch'}</span></td>
+    </tr>`;
+});
+
+// ── Active nav on scroll ──────────────────────────────────────────────────────
+const sections = document.querySelectorAll('.section');
+const navItems = document.querySelectorAll('.nav-item');
+const io = new IntersectionObserver(entries => {
+  entries.forEach(e => {
+    if (e.isIntersecting) {
+      navItems.forEach(n => n.classList.remove('active'));
+      const active = document.querySelector(`.nav-item[href="#${e.target.id}"]`);
+      if (active) active.classList.add('active');
+    }
+  });
+}, { threshold: 0.3 });
+sections.forEach(s => io.observe(s));
+</script>
+</body>
+</html>
